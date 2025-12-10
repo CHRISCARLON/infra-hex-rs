@@ -36,6 +36,7 @@ pub fn to_record_batch_no_geom(
         .par_iter()
         .map(|record| get_hex_cells(record, zoom))
         .collect();
+    
     let cells_per_pipe = cells_per_pipe?;
 
     let asset_ids: StringArray = records.iter().map(|r| r.asset_id.as_deref()).collect();

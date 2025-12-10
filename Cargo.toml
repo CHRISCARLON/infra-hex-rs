@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-n3gb-rs = "0.1.1"
+n3gb-rs = "0.1.2"
 arrow-array = "56"
 arrow-cast = { version = "56", features = ["prettyprint"] }
 arrow-schema = "56"

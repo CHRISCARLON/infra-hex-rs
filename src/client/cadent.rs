@@ -1,6 +1,7 @@
 use futures::future::join_all;
 use geojson::Feature;
 use serde::Deserialize;
+use tokio::time::{Duration, sleep};
 
 use super::InfraClient;
 use super::types::{ApiResponse, BBox, FetchResult, GeoPoint2d, HttpClient};
@@ -119,20 +120,29 @@ impl InfraClient for CadentClient {
             return result;
         }
 
-        let offsets: Vec<usize> = (0..total).step_by(page_size).collect();
+        // OpenDataSoft API caps at offset 10,000
+        // TODO: Need to think of a way around this cause I might miss pipes
+        let max_offset = 10_000usize;
+        let fetchable = total.min(max_offset);
+        let offsets: Vec<usize> = (0..fetchable).step_by(page_size).collect();
+        let batch_size = 100;
 
-        let futures: Vec<_> = offsets
-            .iter()
-            .map(|&offset| self.fetch_page(bbox, page_size, offset))
-            .collect();
+        for chunk in offsets.chunks(batch_size) {
+            let futures: Vec<_> = chunk
+                .iter()
+                .map(|&offset| self.fetch_page(bbox, page_size, offset))
+                .collect();
 
-        let results = join_all(futures).await;
+            let batch_results = join_all(futures).await;
 
-        for page_result in results {
-            match page_result {
-                Ok(records) => result.records.extend(records),
-                Err(e) => result.errors.push(e),
+            for page_result in batch_results {
+                match page_result {
+                    Ok(records) => result.records.extend(records),
+                    Err(e) => result.errors.push(e),
+                }
             }
+
+            sleep(Duration::from_millis(100)).await;
         }
 
         result
