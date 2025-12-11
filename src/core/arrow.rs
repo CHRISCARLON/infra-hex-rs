@@ -10,7 +10,6 @@ use geoarrow_schema::PolygonType;
 use geoarrow_schema::{Crs, Dimension, Metadata, MultiPolygonType};
 use n3gb_rs::HexCell;
 use rayon::prelude::*;
-use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -20,11 +19,7 @@ use crate::error::InfraHexError;
 use super::hex::get_hex_cells;
 
 fn bng_metadata() -> Arc<Metadata> {
-    let crs = Crs::from_projjson(json!({
-        "type": "ProjectedCRS",
-        "name": "OSGB 1936 / British National Grid",
-        "id": {"authority": "EPSG", "code": 27700}
-    }));
+    let crs = Crs::from_authority_code("EPSG:27700".to_string());
     Arc::new(Metadata::new(crs, None))
 }
 
@@ -36,7 +31,7 @@ pub fn to_record_batch_no_geom(
         .par_iter()
         .map(|record| get_hex_cells(record, zoom))
         .collect();
-    
+
     let cells_per_pipe = cells_per_pipe?;
 
     let asset_ids: StringArray = records.iter().map(|r| r.asset_id.as_deref()).collect();
