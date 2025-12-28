@@ -1,10 +1,12 @@
+use geo_types::LineString;
 use n3gb_rs::HexCell;
 
 use crate::client::PipelineRecord;
 use crate::error::InfraHexError;
 
-use super::geometry::extract_line_string;
+use super::geometry::FromGeoJson;
 
+/// This allows us to take the pipeline linestrings and generate their hex cells
 pub fn get_hex_cells(record: &PipelineRecord, zoom: u8) -> Result<Vec<HexCell>, InfraHexError> {
     let geometry = record
         .geo_shape
@@ -12,7 +14,7 @@ pub fn get_hex_cells(record: &PipelineRecord, zoom: u8) -> Result<Vec<HexCell>, 
         .as_ref()
         .ok_or_else(|| InfraHexError::Geometry("Feature has no geometry".to_string()))?;
 
-    let line = extract_line_string(geometry)?;
+    let line = LineString::from_geojson(geometry)?;
     let cells = HexCell::from_line_string_wgs84(&line, zoom)?;
     Ok(cells)
 }

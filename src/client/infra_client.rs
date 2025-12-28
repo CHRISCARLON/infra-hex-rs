@@ -1,11 +1,26 @@
-use futures::future::join_all;
+use std::future::Future;
+
 use geojson::Feature;
 use serde::Deserialize;
-use tokio::time::{Duration, sleep};
 
-use super::InfraClient;
-use super::types::{ApiResponse, BBox, FetchResult, GeoPoint2d, HttpClient};
+use super::pagination::{fetch_all_pages, PaginationConfig};
+use super::types::{ApiResponse, BBox, GeoPoint2d, HttpClient, InfraResult};
 use crate::error::InfraHexError;
+
+pub trait InfraClient {
+    type Record;
+
+    fn fetch_by_bbox(
+        &self,
+        bbox: &BBox,
+        limit: Option<usize>,
+    ) -> impl Future<Output = Result<Vec<Self::Record>, InfraHexError>> + Send;
+
+    fn fetch_all_by_bbox(
+        &self,
+        bbox: &BBox,
+    ) -> impl Future<Output = InfraResult<Self::Record>> + Send;
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PipelineRecord {
@@ -93,10 +108,8 @@ impl InfraClient for CadentClient {
         Ok(response.results)
     }
 
-    async fn fetch_all_by_bbox(&self, bbox: &BBox) -> FetchResult<Self::Record> {
-        let page_size = 100;
-        let mut result = FetchResult::new();
-
+    async fn fetch_all_by_bbox(&self, bbox: &BBox) -> InfraResult<Self::Record> {
+        // Get total count first
         let url = format!(
             "{}?where={}&limit=1",
             self.base_url,
@@ -110,42 +123,19 @@ impl InfraClient for CadentClient {
         {
             Ok(resp) => resp,
             Err(e) => {
+                let mut result = InfraResult::new();
                 result.errors.push(e);
                 return result;
             }
         };
 
         let total = first.total_count as usize;
-        if total == 0 {
-            return result;
-        }
 
-        // OpenDataSoft API caps at offset 10,000
-        // TODO: Need to think of a way around this cause I might miss pipes
-        let max_offset = 10_000usize;
-        let fetchable = total.min(max_offset);
-        let offsets: Vec<usize> = (0..fetchable).step_by(page_size).collect();
-        let batch_size = 100;
-
-        for chunk in offsets.chunks(batch_size) {
-            let futures: Vec<_> = chunk
-                .iter()
-                .map(|&offset| self.fetch_page(bbox, page_size, offset))
-                .collect();
-
-            let batch_results = join_all(futures).await;
-
-            for page_result in batch_results {
-                match page_result {
-                    Ok(records) => result.records.extend(records),
-                    Err(e) => result.errors.push(e),
-                }
-            }
-
-            sleep(Duration::from_millis(100)).await;
-        }
-
-        result
+        // Use pagination helper with OpenDataSoft config
+        fetch_all_pages(total, PaginationConfig::opendatasoft(), |offset, limit| {
+            self.fetch_page(bbox, limit, offset)
+        })
+        .await
     }
 }
 

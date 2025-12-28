@@ -1,7 +1,9 @@
-pub mod cadent;
-mod traits;
+pub mod built_up_area;
+pub mod infra_client;
+mod pagination;
 mod types;
 
-pub use cadent::{CadentClient, PipelineRecord};
-pub use traits::InfraClient;
-pub use types::{ApiResponse, BBox, FetchResult, GeoPoint2d};
+pub use built_up_area::{BuiltUpArea, BuiltUpAreaClient, polygon_to_geojson};
+pub use infra_client::{CadentClient, InfraClient, PipelineRecord};
+pub use pagination::{PaginationConfig, fetch_all_pages};
+pub use types::{ApiResponse, BBox, GeoPoint2d, InfraResult};

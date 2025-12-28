@@ -11,12 +11,12 @@ pub struct ApiResponse<T> {
 }
 
 #[derive(Debug)]
-pub struct FetchResult<T> {
+pub struct InfraResult<T> {
     pub records: Vec<T>,
     pub errors: Vec<InfraHexError>,
 }
 
-impl<T> FetchResult<T> {
+impl<T> InfraResult<T> {
     pub fn new() -> Self {
         Self {
             records: Vec::new(),
@@ -33,7 +33,7 @@ impl<T> FetchResult<T> {
     }
 }
 
-impl<T> Default for FetchResult<T> {
+impl<T> Default for InfraResult<T> {
     fn default() -> Self {
         Self::new()
     }

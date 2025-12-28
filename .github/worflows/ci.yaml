@@ -1,4 +1,4 @@
-name: n3gb CI
+name: Infra Hex CI
 
 on:
   push:
