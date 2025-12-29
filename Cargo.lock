@@ -1565,6 +1565,8 @@ dependencies = [
 [[package]]
 name = "n3gb-rs"
 version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75d3700416018fac12e4cced7cd8bf1ad6402832df93367a865840474186cfba"
 dependencies = [
  "arrow-array",
  "arrow-schema",

@@ -10,9 +10,6 @@ const BASE_URL: &str = "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/res
 
 /// Represents a Built-Up Area (BUA) boundary from the ONS 2024 dataset.
 ///
-/// Built-up areas are defined by the ONS as land which is 'irreversibly urban in character',
-/// including areas of urban development with a minimum population of 10,000.
-///
 /// # Fields
 ///
 /// * `object_id` - Unique identifier from the ONS dataset (used for API queries)
@@ -131,7 +128,7 @@ pub fn polygon_to_geojson(polygon: &Polygon<f64>) -> GeoJsonGeometry {
 
 /// HTTP client for fetching Built-Up Area boundaries from the ONS Open Geography Portal.
 ///
-/// This client queries the ONS ArcGIS Feature Server for the 2024 Built-Up Areas
+/// This client queries the ONS ArcGIS Feature Service for the 2024 Built-Up Areas
 /// dataset covering England and Wales. No authentication is required.
 ///
 /// # Data Source
