@@ -2,6 +2,10 @@
 name = "infra-hex-rs"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Fetch UK infrastructure data, aggregate to  hex grids in British National Grid"
+repository = "https://github.com/CHRISCARLON/infra-hex-rs"
+keywords = ["grids", "hex", "arrow", "infrastructure", "geospatial"]
 
 [dependencies]
 n3gb-rs = "0.1.6"
