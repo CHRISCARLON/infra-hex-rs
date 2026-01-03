@@ -6,6 +6,7 @@ use crate::error::InfraHexError;
 
 use super::types::InfraResult;
 
+/// TODO: Need to make this trait based to allow for other pagination options
 /// Configuration for paginated fetching.
 #[derive(Debug, Clone)]
 pub struct PaginationConfig {
@@ -125,6 +126,7 @@ where
         }
 
         // Rate limiting delay between batches (skip delay after last batch)
+        // This is because the API will throttle bursts
         if !chunk.is_empty() && chunk.last() != offsets.last() {
             sleep(config.batch_delay).await;
         }
