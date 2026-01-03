@@ -1,48 +1,9 @@
-use std::future::Future;
-
-use geojson::Feature;
-use serde::Deserialize;
-
-use super::pagination::{fetch_all_pages, PaginationConfig};
-use super::types::{ApiResponse, BBox, GeoPoint2d, HttpClient, InfraResult};
+use crate::client::pagination::{fetch_all_pages, PaginationConfig};
+use crate::client::traits::InfraClient;
+use crate::client::types::{ApiResponse, BBox, HttpClient, InfraResult};
 use crate::error::InfraHexError;
 
-pub trait InfraClient {
-    type Record;
-
-    fn fetch_by_bbox(
-        &self,
-        bbox: &BBox,
-        limit: Option<usize>,
-    ) -> impl Future<Output = Result<Vec<Self::Record>, InfraHexError>> + Send;
-
-    fn fetch_all_by_bbox(
-        &self,
-        bbox: &BBox,
-    ) -> impl Future<Output = InfraResult<Self::Record>> + Send;
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PipelineRecord {
-    pub geo_point_2d: GeoPoint2d,
-    pub geo_shape: Feature,
-
-    #[serde(rename = "type")]
-    pub pipe_type: Option<String>,
-    pub pressure: Option<String>,
-    pub material: Option<String>,
-    pub diameter: Option<f64>,
-    pub diam_unit: Option<String>,
-
-    pub carr_mat: Option<String>,
-    pub carr_dia: Option<f64>,
-    pub carr_di_un: Option<String>,
-
-    pub asset_id: Option<String>,
-    pub depth: Option<f64>,
-    pub ag_ind: Option<String>,
-    pub inst_date: Option<String>,
-}
+use super::record::CadentPipelineRecord;
 
 pub struct CadentClient {
     http: HttpClient,
@@ -74,7 +35,7 @@ impl CadentClient {
         bbox: &BBox,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<PipelineRecord>, InfraHexError> {
+    ) -> Result<Vec<CadentPipelineRecord>, InfraHexError> {
         let url = format!(
             "{}?where={}&limit={}&offset={}",
             self.base_url,
@@ -83,13 +44,13 @@ impl CadentClient {
             offset
         );
 
-        let response: ApiResponse<PipelineRecord> = self.http.fetch_json(&url).await?;
+        let response: ApiResponse<CadentPipelineRecord> = self.http.fetch_json(&url).await?;
         Ok(response.results)
     }
 }
 
 impl InfraClient for CadentClient {
-    type Record = PipelineRecord;
+    type Record = CadentPipelineRecord;
 
     async fn fetch_by_bbox(
         &self,
@@ -104,7 +65,7 @@ impl InfraClient for CadentClient {
             limit
         );
 
-        let response: ApiResponse<PipelineRecord> = self.http.fetch_json(&url).await?;
+        let response: ApiResponse<CadentPipelineRecord> = self.http.fetch_json(&url).await?;
         Ok(response.results)
     }
 
@@ -118,7 +79,7 @@ impl InfraClient for CadentClient {
 
         let first = match self
             .http
-            .fetch_json::<ApiResponse<PipelineRecord>>(&url)
+            .fetch_json::<ApiResponse<CadentPipelineRecord>>(&url)
             .await
         {
             Ok(resp) => resp,

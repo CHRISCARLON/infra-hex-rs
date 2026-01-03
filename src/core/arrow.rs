@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::client::PipelineRecord;
+use crate::client::PipelineData;
 use crate::error::InfraHexError;
 
 use super::hex::get_hex_cells;
@@ -22,19 +22,42 @@ use super::hex::get_hex_cells;
 // =============================================================================
 
 /// Trait for types that can filter hex cells to a geographic boundary.
+///
+/// This is typically used to further restrict data that was first selected
+/// using a bounding box (bbox). Implementors return a set of hex cell IDs
+/// that intersect the boundary geometry at a given zoom level. Downstream
+/// code can then use these IDs to filter associated pipeline or asset data
+/// to only those cells that fall within the boundary.
 pub trait BoundaryFilter {
-    /// Returns the set of valid cell IDs within this boundary, or None for no filtering.
+    /// Returns the set of valid hex cell IDs within this boundary at the given
+    /// `zoom` level, or `None` to indicate that no boundary-based filtering
+    /// should be applied.
+    ///
+    /// When `Some(HashSet<String>)` is returned, each string is the ID of a
+    /// hex cell that intersects the boundary. Consumers can match these IDs
+    /// against the hex IDs used in their data model and discard any records
+    /// whose hex IDs are not in this set - use Intersect for this.
     fn valid_cell_ids(&self, zoom: u8) -> Result<Option<HashSet<String>>, InfraHexError>;
 }
 
-/// No boundary filtering - include all cells.
+/// No boundary filtering - include all the hex cells.
+///
+/// This is effectively a "pass-through" implementation: it signals to
+/// downstream code that every hex cell from the bbox (or other upstream
+/// source) should be considered valid.
 impl BoundaryFilter for () {
     fn valid_cell_ids(&self, _zoom: u8) -> Result<Option<HashSet<String>>, InfraHexError> {
+        // `None` means "no filtering": keep all cells.
         Ok(None)
     }
 }
 
-/// Filter to cells intersecting a polygon boundary.
+/// Filter hex cells intersecting a polygon boundary.
+///
+/// Constructs a `HexGrid` from the provided `Polygon` at the specified
+/// `zoom` level and returns the IDs of all hex cells whose geometry
+/// intersects the polygon. These IDs can then be used to filter
+/// pipeline or asset records to only those within the polygon.
 impl BoundaryFilter for Polygon<f64> {
     fn valid_cell_ids(&self, zoom: u8) -> Result<Option<HashSet<String>>, InfraHexError> {
         let grid = HexGrid::from_wgs84_polygon(self, zoom)?;
@@ -43,7 +66,12 @@ impl BoundaryFilter for Polygon<f64> {
     }
 }
 
-/// Filter to cells intersecting a multipolygon boundary.
+/// Filter hex cells intersecting a multipolygon boundary.
+///
+/// Similar to the `Polygon` implementation, but supports complex
+/// geometries composed of multiple polygons. All hex cells that
+/// intersect any polygon in the `MultiPolygon` at the given `zoom`
+/// level are included in the returned ID set.
 impl BoundaryFilter for MultiPolygon<f64> {
     fn valid_cell_ids(&self, zoom: u8) -> Result<Option<HashSet<String>>, InfraHexError> {
         let grid = HexGrid::from_wgs84_multipolygon(self, zoom)?;
@@ -56,14 +84,19 @@ impl BoundaryFilter for MultiPolygon<f64> {
 // Helper Functions
 // =============================================================================
 
+/// CRS object
 fn bng_metadata() -> Arc<Metadata> {
     let crs = Crs::from_authority_code("EPSG:27700".to_string());
     Arc::new(Metadata::new(crs, None))
 }
 
 /// Extracts hex cells for each pipeline, optionally filtering by boundary.
-fn extract_cells_per_pipeline(
-    records: &[PipelineRecord],
+/// If `valid_ids` is:
+/// - `Some(set)`: only hex cells whose IDs are in `set` are kept for each pipeline.
+/// - `None`: no boundary filtering is applied and all computed cells are returned.
+/// - This is the boundary filter logic in practice.
+fn extract_cells_per_pipeline<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     valid_ids: &Option<HashSet<String>>,
 ) -> Result<Vec<Vec<HexCell>>, InfraHexError> {
@@ -89,13 +122,13 @@ fn extract_cells_per_pipeline(
 }
 
 /// Builds the pipeline attribute arrays (asset_id, pipe_type, material, pressure).
-fn build_pipeline_attributes(
-    records: &[PipelineRecord],
+fn build_pipeline_attributes<T: PipelineData>(
+    records: &[T],
 ) -> (StringArray, StringArray, StringArray, StringArray) {
-    let asset_ids: StringArray = records.iter().map(|r| r.asset_id.as_deref()).collect();
-    let pipe_types: StringArray = records.iter().map(|r| r.pipe_type.as_deref()).collect();
-    let materials: StringArray = records.iter().map(|r| r.material.as_deref()).collect();
-    let pressures: StringArray = records.iter().map(|r| r.pressure.as_deref()).collect();
+    let asset_ids: StringArray = records.iter().map(|r| r.asset_id()).collect();
+    let pipe_types: StringArray = records.iter().map(|r| r.pipe_type()).collect();
+    let materials: StringArray = records.iter().map(|r| r.material()).collect();
+    let pressures: StringArray = records.iter().map(|r| r.pressure()).collect();
     (asset_ids, pipe_types, materials, pressures)
 }
 
@@ -166,8 +199,8 @@ fn aggregate_hex_counts(
 // Record Batch Functions (one row per pipeline)
 // =============================================================================
 
-fn to_record_batch_impl<F: BoundaryFilter>(
-    records: &[PipelineRecord],
+fn to_record_batch_impl<T: PipelineData, F: BoundaryFilter>(
+    records: &[T],
     zoom: u8,
     filter: &F,
     include_geom: bool,
@@ -217,43 +250,46 @@ fn to_record_batch_impl<F: BoundaryFilter>(
 // Public Record Batch API
 // -----------------------------------------------------------------------------
 
-pub fn to_record_batch_no_geom(
-    records: &[PipelineRecord],
+pub fn to_record_batch_no_geom<T: PipelineData>(
+    records: &[T],
     zoom: u8,
 ) -> Result<RecordBatch, InfraHexError> {
     to_record_batch_impl(records, zoom, &(), false)
 }
 
-pub fn to_record_batch(records: &[PipelineRecord], zoom: u8) -> Result<RecordBatch, InfraHexError> {
+pub fn to_record_batch<T: PipelineData>(
+    records: &[T],
+    zoom: u8,
+) -> Result<RecordBatch, InfraHexError> {
     to_record_batch_impl(records, zoom, &(), true)
 }
 
-pub fn to_record_batch_for_polygon_no_geom(
-    records: &[PipelineRecord],
+pub fn to_record_batch_for_polygon_no_geom<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     polygon: &Polygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
     to_record_batch_impl(records, zoom, polygon, false)
 }
 
-pub fn to_record_batch_for_polygon(
-    records: &[PipelineRecord],
+pub fn to_record_batch_for_polygon<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     polygon: &Polygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
     to_record_batch_impl(records, zoom, polygon, true)
 }
 
-pub fn to_record_batch_for_multipolygon_no_geom(
-    records: &[PipelineRecord],
+pub fn to_record_batch_for_multipolygon_no_geom<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     multipolygon: &MultiPolygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
     to_record_batch_impl(records, zoom, multipolygon, false)
 }
 
-pub fn to_record_batch_for_multipolygon(
-    records: &[PipelineRecord],
+pub fn to_record_batch_for_multipolygon<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     multipolygon: &MultiPolygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
@@ -264,8 +300,8 @@ pub fn to_record_batch_for_multipolygon(
 // Hex Summary Functions (one row per hex cell, aggregated counts)
 // =============================================================================
 
-fn to_hex_summary_impl<F: BoundaryFilter>(
-    records: &[PipelineRecord],
+fn to_hex_summary_impl<T: PipelineData, F: BoundaryFilter>(
+    records: &[T],
     zoom: u8,
     filter: &F,
     include_geom: bool,
@@ -310,43 +346,46 @@ fn to_hex_summary_impl<F: BoundaryFilter>(
 // Public Hex Summary API
 // -----------------------------------------------------------------------------
 
-pub fn to_hex_summary_no_geom(
-    records: &[PipelineRecord],
+pub fn to_hex_summary_no_geom<T: PipelineData>(
+    records: &[T],
     zoom: u8,
 ) -> Result<RecordBatch, InfraHexError> {
     to_hex_summary_impl(records, zoom, &(), false)
 }
 
-pub fn to_hex_summary(records: &[PipelineRecord], zoom: u8) -> Result<RecordBatch, InfraHexError> {
+pub fn to_hex_summary<T: PipelineData>(
+    records: &[T],
+    zoom: u8,
+) -> Result<RecordBatch, InfraHexError> {
     to_hex_summary_impl(records, zoom, &(), true)
 }
 
-pub fn to_hex_summary_for_polygon_no_geom(
-    records: &[PipelineRecord],
+pub fn to_hex_summary_for_polygon_no_geom<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     polygon: &Polygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
     to_hex_summary_impl(records, zoom, polygon, false)
 }
 
-pub fn to_hex_summary_for_polygon(
-    records: &[PipelineRecord],
+pub fn to_hex_summary_for_polygon<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     polygon: &Polygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
     to_hex_summary_impl(records, zoom, polygon, true)
 }
 
-pub fn to_hex_summary_for_multipolygon_no_geom(
-    records: &[PipelineRecord],
+pub fn to_hex_summary_for_multipolygon_no_geom<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     multipolygon: &MultiPolygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {
     to_hex_summary_impl(records, zoom, multipolygon, false)
 }
 
-pub fn to_hex_summary_for_multipolygon(
-    records: &[PipelineRecord],
+pub fn to_hex_summary_for_multipolygon<T: PipelineData>(
+    records: &[T],
     zoom: u8,
     multipolygon: &MultiPolygon<f64>,
 ) -> Result<RecordBatch, InfraHexError> {

@@ -1,9 +1,9 @@
 [package]
 name = "infra-hex-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Fetch UK infrastructure data, aggregate to  hex grids in British National Grid"
+description = "Rust library to create hex density grids of open underground asset data."
 repository = "https://github.com/CHRISCARLON/infra-hex-rs"
 keywords = ["grids", "hex", "arrow", "infrastructure", "geospatial"]
 

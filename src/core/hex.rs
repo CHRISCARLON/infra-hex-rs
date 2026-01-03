@@ -1,15 +1,19 @@
 use geo_types::LineString;
 use n3gb_rs::HexCell;
 
-use crate::client::PipelineRecord;
+use crate::client::PipelineData;
 use crate::error::InfraHexError;
 
 use super::geometry::FromGeoJson;
 
-/// This allows us to take the pipeline linestrings and generate their hex cells
-pub fn get_hex_cells(record: &PipelineRecord, zoom: u8) -> Result<Vec<HexCell>, InfraHexError> {
+/// Extract hex cells from any pipeline record that implements PipelineData.
+/// This works with pipeline linestrings from different infrastructure clients.
+/// This currenty assumes the data will be in wgs84 for NUAR client needs to be BNG too
+/// TODO: Add flag for CRS system that tiggers correct method
+/// let cells = HexCell::from_line_string_bng(&line, zoom)?;
+pub fn get_hex_cells<T: PipelineData>(record: &T, zoom: u8) -> Result<Vec<HexCell>, InfraHexError> {
     let geometry = record
-        .geo_shape
+        .geo_shape()
         .geometry
         .as_ref()
         .ok_or_else(|| InfraHexError::Geometry("Feature has no geometry".to_string()))?;
@@ -22,10 +26,10 @@ pub fn get_hex_cells(record: &PipelineRecord, zoom: u8) -> Result<Vec<HexCell>, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::GeoPoint2d;
+    use crate::client::{CadentPipelineRecord, GeoPoint2d};
     use geojson::{Feature, Geometry, Value};
 
-    fn make_test_record() -> PipelineRecord {
+    fn make_test_record() -> CadentPipelineRecord {
         let geom = Geometry::new(Value::LineString(vec![
             vec![-2.248423716278411, 53.4804537960769],
             vec![-2.248817614533952, 53.480510340167925],
@@ -34,7 +38,7 @@ mod tests {
             vec![-2.250244759514899, 53.48066909573824],
         ]));
 
-        PipelineRecord {
+        CadentPipelineRecord {
             geo_point_2d: GeoPoint2d {
                 lon: -2.248,
                 lat: 53.480,

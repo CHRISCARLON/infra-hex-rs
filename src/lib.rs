@@ -3,8 +3,8 @@ pub mod core;
 pub mod error;
 
 pub use client::{
-    ApiResponse, BBox, BuiltUpArea, BuiltUpAreaClient, CadentClient, GeoPoint2d, InfraClient,
-    InfraResult, PipelineRecord, polygon_to_geojson,
+    ApiResponse, BBox, BuiltUpArea, BuiltUpAreaClient, CadentClient, CadentPipelineRecord,
+    GeoPoint2d, InfraClient, InfraResult, PipelineData, polygon_to_geojson,
 };
 pub use core::{
     get_hex_cells, to_hex_summary, to_hex_summary_for_multipolygon,
